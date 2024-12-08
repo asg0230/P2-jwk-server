@@ -1,12 +1,10 @@
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.padding import PKCS7
 from passlib.hash import argon2
-import os
 import uuid
 import time
 from functools import wraps
@@ -15,7 +13,10 @@ from functools import wraps
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///jwks_server.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = os.environ.get('NOT_MY_KEY', 'default_secret_key')
+app.config['SECRET_KEY'] = "your-hardcoded-flask-secret-key"
+
+# Hardcoded AES encryption key (32-byte base64-encoded string)
+AES_KEY = b'12345678901234567890123456789012'  # Example key, replace with a secure key
 
 # Database setup
 db = SQLAlchemy(app)
@@ -38,23 +39,15 @@ class AuthLog(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
 
 # Utilities for AES encryption
-def get_aes_key():
-    key = os.environ.get('NOT_MY_KEY')
-    if not key:
-        raise RuntimeError("Encryption key is not set in the environment.")
-    return key.encode('utf-8')
-
 def aes_encrypt(data: str) -> bytes:
-    key = get_aes_key()
-    cipher = Cipher(algorithms.AES(key), modes.CBC(b'16bytesvector123'), backend=default_backend())
+    cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(b'16bytesvector123'), backend=default_backend())
     encryptor = cipher.encryptor()
     padder = PKCS7(128).padder()
     padded_data = padder.update(data.encode('utf-8')) + padder.finalize()
     return encryptor.update(padded_data) + encryptor.finalize()
 
 def aes_decrypt(encrypted_data: bytes) -> str:
-    key = get_aes_key()
-    cipher = Cipher(algorithms.AES(key), modes.CBC(b'16bytesvector123'), backend=default_backend())
+    cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(b'16bytesvector123'), backend=default_backend())
     decryptor = cipher.decryptor()
     unpadder = PKCS7(128).unpadder()
     decrypted_padded_data = decryptor.update(encrypted_data) + decryptor.finalize()
@@ -130,3 +123,4 @@ with app.app_context():
 
 if __name__ == '__main__':
     app.run(debug=True)
+
