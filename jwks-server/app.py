@@ -16,7 +16,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = "your-hardcoded-flask-secret-key"
 
 # Hardcoded AES encryption key (32-byte base64-encoded string)
-AES_KEY = b'12345678901234567890123456789012'  # Example key, replace with a secure key
+AES_KEY = b'12345678901234567890123456789012' 
 
 # Database setup
 db = SQLAlchemy(app)
@@ -38,7 +38,13 @@ class AuthLog(db.Model):
     request_timestamp = db.Column(db.DateTime, default=db.func.now())
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
 
-# Utilities for AES encryption
+class Key(db.Model):
+    __tablename__ = 'key_store'
+    id = db.Column(db.Integer, primary_key=True)
+    key_name = db.Column(db.String, unique=True, nullable=False)
+    encrypted_key = db.Column(db.Text, nullable=False)
+
+# Utilities for AES en.
 def aes_encrypt(data: str) -> bytes:
     cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(b'16bytesvector123'), backend=default_backend())
     encryptor = cipher.encryptor()
@@ -117,10 +123,53 @@ def authenticate():
 
     return jsonify({"message": "Authentication successful."}), 200
 
-# Initialize the database
+@app.route('/keys', methods=['POST'])
+def store_key():
+    data = request.json
+    key_name = data.get('key_name')
+    private_key = data.get('private_key')
+
+    if not key_name or not private_key:
+        return jsonify({"error": "Key name and private key are required."}), 400
+
+    try:
+        # Encrypt the private key
+        encrypted_key = aes_encrypt(private_key)
+        # Add the encrypted key to the database
+        new_key = Key(key_name=key_name, encrypted_key=encrypted_key.hex())  # Convert bytes to hex
+        db.session.add(new_key)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error storing key: {str(e)}")  # Log the full error
+        return jsonify({"error": f"Could not store key: {str(e)}"}), 500
+
+    return jsonify({"message": "Key stored successfully."}), 201
+
+
+
+
+
+# Initializing the database
 with app.app_context():
     db.create_all()
 
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    # Test AES encryption and decryption
+    test_key = "sampleprivatekey"
+
+    try:
+        # Encrypt the test data
+        encrypted = aes_encrypt(test_key)
+        print(f"Encrypted Key (hex): {encrypted.hex()}")
+
+        # Decrypt the encrypted data
+        decrypted = aes_decrypt(encrypted)
+        print(f"Decrypted Key: {decrypted}")
+    except Exception as e:
+        print(f"Error during encryption/decryption: {str(e)}")
+
+    # Start Flask server
+    app.run(debug=True, host="127.0.0.1", port=5000)
+
 
